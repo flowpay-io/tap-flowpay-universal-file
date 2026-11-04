@@ -1,0 +1,47 @@
+[tool.poetry]
+name = "tap-gokasa"
+version = "0.0.1"
+description = "`tap-gokasa` is a Singer tap that merges GoKasa sales files pushed to Azure blob storage into a complete transaction history, built with the Meltano Singer SDK."
+readme = "README.md"
+authors = ["Flowpay"]
+keywords = [
+    "ELT",
+    "GoKasa",
+]
+license = "Apache-2.0"
+packages = [{ include = "tap_gokasa" }]
+
+[tool.poetry.dependencies]
+python = "<3.12,>=3.8"
+singer-sdk = { version="~0.31.0" }
+azure-storage-blob = "^12.19.0"
+jsonschema = ">=4.18,<5"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+ignore = [
+    "ANN101",  # missing-type-self
+    "ANN102",  # missing-type-cls
+]
+select = ["ALL"]
+src = ["tap_gokasa"]
+target-version = "py38"
+
+[tool.ruff.isort]
+known-first-party = ["tap_gokasa"]
+
+[tool.ruff.pydocstyle]
+convention = "google"
+
+[build-system]
+requires = ["poetry-core>=1.0.8"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+# CLI declaration
+tap-gokasa = 'tap_gokasa.tap:TapGoKasa.cli'

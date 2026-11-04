@@ -1,0 +1,9 @@
+{
+    "account_url": "https://<account>.blob.core.windows.net",
+    "merchant_id": "<merchant id>",
+    "inbound_container": "<inbound container>",
+    "inbound_sas_token": "",
+    "history_container": "<history container>",
+    "history_sas_token": "",
+    "history_prefix": "<folder>/{tenant}/{tap}/"
+}
