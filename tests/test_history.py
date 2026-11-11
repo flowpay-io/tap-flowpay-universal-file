@@ -38,6 +38,16 @@ def test_no_history_yet():
     assert latest_history([BlobInfo("history/t/gokasa/202610/a/other.jsonl", at(1))]) is None
 
 
+@pytest.mark.parametrize(("content", "name"), [
+    (b"", "transactions.jsonl"),
+    (b"\n\n", "transactions.jsonl"),
+    (b"transactionId,payments,date,checkoutId,cancel\n", "transactions.csv"),
+])
+def test_empty_selected_history_cannot_silently_reset_existing_data(content, name):
+    with pytest.raises(InvalidHistory, match="no transactions"):
+        parse_history(content, name)
+
+
 def test_jsonl_history_reads_back_what_the_tap_emitted():
     records = [
         {**txn("split"), "payments": [payment(1000), payment(2500, "CREDIT_CARD")]},

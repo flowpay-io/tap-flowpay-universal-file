@@ -53,7 +53,7 @@ def test_initial_file_becomes_the_history_unchanged(store, capsys):
 
     assert emitted == records
     assert set(schema["properties"]) == {"transactionId", "payments", "date", "checkoutId", "cancel"}
-    assert store.names(INBOUND) == [f"archive/{MERCHANT}/transactions_{MERCHANT}_1.jsonl"]
+    assert store.names(INBOUND) == [file_name()]
 
 
 def test_next_file_merges_into_the_newest_history(store, capsys):
@@ -84,10 +84,7 @@ def test_every_waiting_file_is_merged_and_the_newer_one_wins(store, capsys):
     _, emitted = run_tap(store, capsys)
 
     assert [(r["transactionId"], r["payments"][0]["amount"]) for r in emitted] == [("t1", 900), ("t2", 100)]
-    assert store.names(INBOUND) == [
-        f"archive/{MERCHANT}/transactions_{MERCHANT}_1.jsonl",
-        f"archive/{MERCHANT}/transactions_{MERCHANT}_2.jsonl",
-    ]
+    assert store.names(INBOUND) == [file_name(), file_name(2)]
 
 
 def test_other_merchants_files_are_left_alone(store, capsys):
@@ -108,12 +105,12 @@ def test_one_folder_layout_with_the_merchant_id_in_the_file_name(store, capsys):
 
     assert [r["transactionId"] for r in emitted] == ["mine"]
     assert store.names(INBOUND) == [
-        f"archive/transactions_{MERCHANT}_1.jsonl",
+        f"inbound/transactions_{MERCHANT}_1.jsonl",
         "inbound/transactions_M002_1.jsonl",
     ]
 
 
-def test_files_stay_in_inbound_when_something_else_archives_them(store, capsys):
+def test_explicit_archive_false_keeps_existing_manual_configurations_working(store, capsys):
     store.put(INBOUND, file_name(), jsonl(txn("t1")))
 
     run_tap(store, capsys, archive_processed=False)
@@ -163,13 +160,15 @@ def test_real_export_passes_through_and_a_second_run_changes_nothing(store, caps
         (json.loads(line) for line in content.decode("utf-8-sig").split("\n") if line.strip()),
         key=lambda r: (r["date"], r["transactionId"]),
     )
-    store.put(INBOUND, FOLDER + path.name, content)
+    # Use a synthetic filename in the expected partner format; fixture contents stay private.
+    store.put(INBOUND, file_name(), content)
 
-    _, first = run_tap(store, capsys)
+    _, first = run_tap(store, capsys, input_blob=file_name(), history_blob=None)
     assert first == expected
 
     # The next job reads that output back as history and gets the same file again.
-    store.put(HISTORY, HISTORY_PREFIX + "202611/job-1/transactions.jsonl", jsonl(*first))
-    store.put(INBOUND, FOLDER + path.name, content)
-    _, second = run_tap(store, capsys)
+    previous = HISTORY_PREFIX + "202611/job-1/transactions.jsonl"
+    store.put(HISTORY, previous, jsonl(*first))
+    _, second = run_tap(store, capsys, input_blob=file_name(), history_blob=previous)
     assert second == expected
+    assert store.read(INBOUND, file_name()) == content

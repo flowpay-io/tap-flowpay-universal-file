@@ -24,9 +24,11 @@ class InvalidHistory(ValueError):
     """The previous history file cannot be read back. The job fails rather than lose transactions."""
 
 
-def latest_history(blobs: t.Iterable[BlobInfo]) -> BlobInfo | None:
-    """The newest history file. Job IDs are random, so order by lastModified."""
-    candidates = [b for b in blobs if b.name.rsplit("/", 1)[-1] in HISTORY_FILES]
+def latest_history(
+    blobs: t.Iterable[BlobInfo], *, filenames: tuple[str, ...] = HISTORY_FILES,
+) -> BlobInfo | None:
+    """Legacy lookup by modification time; this cannot establish job success."""
+    candidates = [b for b in blobs if b.name.rsplit("/", 1)[-1] in filenames]
     return max(candidates, key=lambda b: (b.last_modified, b.name), default=None)
 
 
@@ -54,6 +56,8 @@ def parse_history(content: bytes, source: str) -> list[dict]:
             records.append(record)
     if errors:
         raise InvalidHistory(report(source, errors))
+    if not records:
+        raise InvalidHistory(f"{source}: no transactions; refusing to reset history from an empty file")
     return records
 
 

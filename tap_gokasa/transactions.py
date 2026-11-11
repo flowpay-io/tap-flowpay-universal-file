@@ -50,6 +50,8 @@ def parse_delivery(content: bytes, source: str) -> list[dict]:
             records.append(record)
     if errors:
         raise InvalidDelivery(report(source, errors))
+    if not records:
+        raise InvalidDelivery(f"{source}: no transactions; an empty delivery cannot produce a complete history")
     return records
 
 
