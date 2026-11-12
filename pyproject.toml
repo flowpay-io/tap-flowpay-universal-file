@@ -1,15 +1,16 @@
 [tool.poetry]
-name = "tap-gokasa"
-version = "0.0.1"
-description = "`tap-gokasa` is a Singer tap that merges GoKasa sales files pushed to Azure blob storage into a complete transaction history, built with the Meltano Singer SDK."
+name = "tap-flowpay-universal-file"
+version = "0.1.0"
+description = "`tap-flowpay-universal-file` is a Singer tap that merges partner sales files pushed to Azure blob storage into a complete history, configured per partner, built with the Meltano Singer SDK."
 readme = "README.md"
 authors = ["Flowpay"]
 keywords = [
     "ELT",
+    "Azure Blob Storage",
     "GoKasa",
 ]
 license = "Apache-2.0"
-packages = [{ include = "tap_gokasa" }]
+packages = [{ include = "tap_flowpay_universal_file" }]
 
 [tool.poetry.dependencies]
 python = "<3.12,>=3.8"
@@ -30,11 +31,11 @@ ignore = [
     "ANN102",  # missing-type-cls
 ]
 select = ["ALL"]
-src = ["tap_gokasa"]
+src = ["tap_flowpay_universal_file"]
 target-version = "py38"
 
 [tool.ruff.isort]
-known-first-party = ["tap_gokasa"]
+known-first-party = ["tap_flowpay_universal_file"]
 
 [tool.ruff.pydocstyle]
 convention = "google"
@@ -44,5 +45,6 @@ requires = ["poetry-core>=1.0.8"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-# CLI declaration
-tap-gokasa = 'tap_gokasa.tap:TapGoKasa.cli'
+# CLI declaration. tap-gokasa keeps pipelines configured with the old executable name running.
+tap-flowpay-universal-file = 'tap_flowpay_universal_file.tap:TapFlowpayUniversalFile.cli'
+tap-gokasa = 'tap_flowpay_universal_file.tap:TapFlowpayUniversalFile.cli'

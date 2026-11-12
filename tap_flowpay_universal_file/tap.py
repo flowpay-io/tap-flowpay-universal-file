@@ -1,4 +1,4 @@
-"""GoKasa tap class."""
+"""Tap class for partner files pushed to Azure Blob Storage."""
 
 from __future__ import annotations
 
@@ -7,30 +7,56 @@ from functools import cached_property
 from singer_sdk import Tap
 from singer_sdk import typing as th  # JSON schema typing helpers
 
-from tap_gokasa import streams
-from tap_gokasa.adapters import FileAdapter, get_adapter
-from tap_gokasa.configuration import history_prefix, validate_blob_name, validate_settings
-from tap_gokasa.history import latest_history
-from tap_gokasa.storage import AzureBlobStore, BlobInfo, BlobStore
+from tap_flowpay_universal_file import streams
+from tap_flowpay_universal_file.configuration import history_prefix, validate_blob_name, validate_settings
+from tap_flowpay_universal_file.contract import FileContract, contract_from_config
+from tap_flowpay_universal_file.history import latest_history
+from tap_flowpay_universal_file.storage import AzureBlobStore, BlobInfo, BlobStore
 
 
-class TapGoKasa(Tap):
-    """GoKasa tap class.
+class TapFlowpayUniversalFile(Tap):
+    """Merges a partner's delivered file into the merchant's previous complete history.
 
-    Each run merges the selected delivery into the previous complete history.
-    The adapter owns the file format; the tap owns storage and job selection.
+    The configured file contract owns the format; the tap owns storage and job selection.
     Prefix scanning remains available for existing manual configurations.
     """
 
-    name = "tap-gokasa"
+    name = "tap-flowpay-universal-file"
 
     config_jsonschema = th.PropertiesList(
         th.Property(
             "partner_code",
             th.StringType,
             default="GoKasa",
-            description="File adapter to use. Currently only GoKasa is supported.",
+            description="Partner label. Without schema, only GoKasa (built-in preset) is accepted.",
         ),
+        th.Property(
+            "file_format", th.StringType,
+            description="jsonl or csv. Part of the file contract; requires schema.",
+        ),
+        th.Property(
+            "file_prefix", th.StringType,
+            description="Delivered files are named <file_prefix>_<merchant_id>_<delivery_id>.<format>. "
+                        "Default transactions.",
+        ),
+        th.Property(
+            "stream_name", th.StringType,
+            description="Output stream; history files are <stream_name>.jsonl or .csv. Default transactions.",
+        ),
+        th.Property(
+            "key_properties", th.ArrayType(th.StringType),
+            description="Fields that identify a record, used for merging. Required with schema.",
+        ),
+        th.Property(
+            "sort_properties", th.ArrayType(th.StringType),
+            description="Output order. Defaults to key_properties.",
+        ),
+        th.Property(
+            "schema", th.ObjectType(),
+            description="JSON Schema of one record. Fields not in it are ignored.",
+        ),
+        th.Property("csv_delimiter", th.StringType, description="CSV only. Default ,"),
+        th.Property("csv_decimal_separator", th.StringType, description="CSV only, . or , Default ."),
         th.Property(
             "auth_method",
             th.StringType,
@@ -127,6 +153,12 @@ class TapGoKasa(Tap):
     ).to_dict()
     # Unlike omission (legacy lookup), explicit null means an intentional initial run.
     config_jsonschema["properties"]["history_blob"]["type"] = ["string", "null"]
+    # Host UIs often store structured settings as JSON text.
+    config_jsonschema["properties"]["schema"] = {
+        **config_jsonschema["properties"]["schema"], "type": ["object", "string", "null"],
+    }
+    for _setting in ("key_properties", "sort_properties"):
+        config_jsonschema["properties"][_setting]["type"] = ["array", "string", "null"]
 
     def _validate_config(
         self, *, raise_errors: bool = True, warnings_as_errors: bool = False,
@@ -145,9 +177,9 @@ class TapGoKasa(Tap):
         return warnings, errors
 
     @cached_property
-    def adapter(self) -> FileAdapter:
-        """The selected partner's schema, parsing and merge rules."""
-        return get_adapter(self.config["partner_code"])
+    def contract(self) -> FileContract:
+        """The partner's file format, schema, key and sort order."""
+        return contract_from_config(self.config)
 
     @cached_property
     def store(self) -> BlobStore:
@@ -175,7 +207,7 @@ class TapGoKasa(Tap):
         """Legacy scan: oldest first, so a more recently uploaded file wins."""
         blobs = self.store.list_blobs(self.inbound_container, self.inbound_prefix)
         return sorted(
-            (blob for blob in blobs if blob.name.endswith(self.adapter.input_suffix)),
+            (blob for blob in blobs if blob.name.endswith(self.contract.input_suffix)),
             key=lambda blob: (blob.last_modified, blob.name),
         )
 
@@ -187,7 +219,7 @@ class TapGoKasa(Tap):
         names = [blob.name for blob in self.waiting_files()]
         for name in names:
             validate_blob_name(name, "input_blob")
-            self.adapter.validate_input_name(name, self.config["merchant_id"])
+            self.contract.validate_input_name(name, self.config["merchant_id"])
         return names
 
     def previous_history(self) -> str | None:
@@ -196,14 +228,14 @@ class TapGoKasa(Tap):
             return self.config["history_blob"]
         previous = latest_history(
             self.store.list_blobs(self.config["history_container"], self.history_prefix),
-            filenames=self.adapter.history_files,
+            filenames=self.contract.history_files,
         )
         return previous.name if previous else None
 
     def discover_streams(self) -> list[streams.FileHistoryStream]:
-        """Return the stream supplied by this partner's adapter."""
+        """Return the stream described by the file contract."""
         return [streams.FileHistoryStream(self)]
 
 
 if __name__ == "__main__":
-    TapGoKasa.cli()
+    TapFlowpayUniversalFile.cli()

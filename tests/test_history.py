@@ -6,9 +6,14 @@ import re
 
 import pytest
 
-from tap_gokasa.history import InvalidHistory, latest_history, parse_history
-from tap_gokasa.storage import BlobInfo
-from tests.conftest import jsonl, payment, txn
+from tap_flowpay_universal_file.contract import contract_from_config
+from tap_flowpay_universal_file.history import InvalidHistory, latest_history
+from tap_flowpay_universal_file.storage import BlobInfo
+from tests.conftest import CSV_PARTNER, jsonl, payment, txn
+
+GOKASA = contract_from_config({"partner_code": "GoKasa"})
+PARTNER = contract_from_config(CSV_PARTNER)
+parse_history = GOKASA.read_history
 
 
 def at(day):
@@ -23,7 +28,7 @@ def test_latest_history_is_the_newest_transactions_file_by_last_modified():
         BlobInfo("history/t/gokasa/202610/ccc/orders.csv", at(9)),
         BlobInfo("history/t/gokasa/202610/ddd/transactions.parquet", at(9)),
     ]
-    assert latest_history(blobs).name == "history/t/gokasa/202610/aaa/transactions.jsonl"
+    assert latest_history(blobs, filenames=GOKASA.history_files).name == "history/t/gokasa/202610/aaa/transactions.jsonl"
 
 
 def test_a_csv_history_counts_too():
@@ -31,11 +36,11 @@ def test_a_csv_history_counts_too():
         BlobInfo("history/t/gokasa/202610/aaa/transactions.jsonl", at(1)),
         BlobInfo("history/t/gokasa/202610/bbb/transactions.csv", at(2)),
     ]
-    assert latest_history(blobs).name == "history/t/gokasa/202610/bbb/transactions.csv"
+    assert latest_history(blobs, filenames=GOKASA.history_files).name == "history/t/gokasa/202610/bbb/transactions.csv"
 
 
 def test_no_history_yet():
-    assert latest_history([BlobInfo("history/t/gokasa/202610/a/other.jsonl", at(1))]) is None
+    assert latest_history([BlobInfo("history/t/gokasa/202610/a/other.jsonl", at(1))], filenames=GOKASA.history_files) is None
 
 
 @pytest.mark.parametrize(("content", "name"), [
@@ -44,7 +49,7 @@ def test_no_history_yet():
     (b"transactionId,payments,date,checkoutId,cancel\n", "transactions.csv"),
 ])
 def test_empty_selected_history_cannot_silently_reset_existing_data(content, name):
-    with pytest.raises(InvalidHistory, match="no transactions"):
+    with pytest.raises(InvalidHistory, match="no records"):
         parse_history(content, name)
 
 
@@ -95,3 +100,45 @@ def test_a_history_row_that_does_not_fit_fails_with_file_and_line():
 def test_an_unreadable_history_line_fails():
     with pytest.raises(InvalidHistory, match=re.escape("h/transactions.jsonl line 2: not valid JSON")):
         parse_history((jsonl(txn("a")) + "{broken\n").encode(), "h/transactions.jsonl")
+
+
+# A partner configured only through settings
+
+PARTNER_RECORDS = [
+    {"receiptId": "R1", "line": 1, "soldAt": "2026-09-01 10:00:00", "amount": 123.5, "refund": False,
+     "note": "first"},
+    {"receiptId": "R1", "line": 2, "soldAt": "2026-09-01T10:00:00+02:00", "amount": -5, "refund": True},
+]
+
+
+def test_partner_history_reads_back_what_the_tap_emitted():
+    assert PARTNER.read_history(jsonl(*PARTNER_RECORDS).encode(), "h/transactions.jsonl") == PARTNER_RECORDS
+
+
+def test_partner_history_as_a_pipeline_may_write_it_as_csv():
+    # Numbers and booleans come back as text, an integer as a float, and the pipeline adds columns.
+    content = (
+        "receiptId,line,soldAt,amount,refund,note,tenant\n"
+        "R1,1.0,2026-09-01 10:00:00,123.5,False,first,tenant1\n"
+        "R1,2,2026-09-01T10:00:00+02:00,-5,True,,tenant1\n"
+    )
+    assert PARTNER.read_history(content.encode(), "h/transactions.csv") == PARTNER_RECORDS
+
+
+def test_history_written_before_a_field_became_required_is_still_read():
+    schema = {**CSV_PARTNER["schema"], "properties": {**CSV_PARTNER["schema"]["properties"],
+                                                      "shop": {"type": "string"}}}
+    stricter = contract_from_config({**CSV_PARTNER, "schema": {**schema, "required": ["soldAt", "amount", "shop"]}})
+    assert stricter.read_history(jsonl(*PARTNER_RECORDS).encode(), "h/transactions.jsonl") == PARTNER_RECORDS
+
+
+def test_history_row_without_its_key_still_fails():
+    rows = [PARTNER_RECORDS[0], {k: v for k, v in PARTNER_RECORDS[1].items() if k != "line"}]
+    with pytest.raises(InvalidHistory, match=re.escape("h/transactions.jsonl line 2: 'line' is a required property")):
+        PARTNER.read_history(jsonl(*rows).encode(), "h/transactions.jsonl")
+
+
+def test_history_value_of_the_wrong_type_still_fails():
+    rows = [{**PARTNER_RECORDS[0], "amount": "a lot"}]
+    with pytest.raises(InvalidHistory, match=re.escape("line 1: amount: 'a lot' is not of type 'number'")):
+        PARTNER.read_history(jsonl(*rows).encode(), "h/transactions.jsonl")

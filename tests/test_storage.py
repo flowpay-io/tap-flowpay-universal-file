@@ -10,7 +10,7 @@ from azure.core.pipeline.transport import HttpResponse, HttpTransport
 from azure.storage.blob import ContainerClient
 from requests.structures import CaseInsensitiveDict
 
-from tap_gokasa.tap import TapGoKasa
+from tap_flowpay_universal_file.tap import TapFlowpayUniversalFile
 from tests.test_authentication import SP_CONFIG
 from tests.test_tap import HISTORY, INBOUND
 
@@ -83,12 +83,12 @@ class MemoryCredential:
 
 
 def make_store(monkeypatch, transport, credential):
-    monkeypatch.setattr("tap_gokasa.storage.ClientSecretCredential", Mock(return_value=credential))
+    monkeypatch.setattr("tap_flowpay_universal_file.storage.ClientSecretCredential", Mock(return_value=credential))
     monkeypatch.setattr(
-        "tap_gokasa.storage.ContainerClient",
+        "tap_flowpay_universal_file.storage.ContainerClient",
         lambda *args, **kwargs: ContainerClient(*args, transport=transport, retry_total=0, **kwargs),
     )
-    return TapGoKasa(config=SP_CONFIG).store
+    return TapFlowpayUniversalFile(config=SP_CONFIG).store
 
 
 def test_real_sdk_downloads_both_files_with_bearer_authentication(monkeypatch):
