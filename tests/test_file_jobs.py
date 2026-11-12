@@ -4,9 +4,9 @@ from unittest.mock import Mock
 
 import pytest
 
-from tap_gokasa.history import InvalidHistory
-from tap_gokasa.tap import TapGoKasa
-from tap_gokasa.transactions import InvalidDelivery
+from tap_flowpay_universal_file.history import InvalidHistory
+from tap_flowpay_universal_file.tap import TapFlowpayUniversalFile
+from tap_flowpay_universal_file.records import InvalidDelivery
 from tests.conftest import jsonl, txn
 from tests.test_tap import CONFIG, HISTORY, HISTORY_PREFIX, INBOUND, file_name, run_tap
 
@@ -100,12 +100,12 @@ def test_history_must_be_a_supported_file_inside_the_connection_prefix(history, 
 
 def test_exact_job_requires_an_explicit_first_run_or_previous_output():
     with pytest.raises(ValueError, match="history_blob"):
-        TapGoKasa(config={**CONFIG, "input_blob": file_name()})
+        TapFlowpayUniversalFile(config={**CONFIG, "input_blob": file_name()})
 
 
 def test_event_configuration_cannot_fall_back_to_scanning_when_file_override_is_missing():
     with pytest.raises(ValueError, match="input_blob"):
-        TapGoKasa(config={**CONFIG, "require_input_blob": True, "history_blob": None})
+        TapFlowpayUniversalFile(config={**CONFIG, "require_input_blob": True, "history_blob": None})
 
 
 @pytest.mark.parametrize("history", [None, HISTORY_PREFIX + "202611/success/transactions.jsonl"])
@@ -175,7 +175,7 @@ def test_initial_job_accepts_resolved_history_prefix(store, capsys, monkeypatch)
 
 def test_empty_input_reference_cannot_fall_back_to_scanning():
     with pytest.raises(ValueError, match="input_blob"):
-        TapGoKasa(config={**CONFIG, "input_blob": "", "history_blob": None})
+        TapFlowpayUniversalFile(config={**CONFIG, "input_blob": "", "history_blob": None})
 
 
 def test_missing_input_fails_without_falling_back_to_other_files(store, capsys, monkeypatch):
@@ -209,12 +209,12 @@ def test_invalid_selected_file_emits_no_partial_history(store, capsys, bad_histo
 
 def test_archive_configuration_cannot_delete_source_files():
     with pytest.raises(ValueError, match="archive_processed"):
-        TapGoKasa(config={**CONFIG, "archive_processed": True})
+        TapFlowpayUniversalFile(config={**CONFIG, "archive_processed": True})
 
 
 def test_unknown_partner_cannot_fall_back_to_the_gokasa_parser():
     with pytest.raises(ValueError, match="partner_code"):
-        TapGoKasa(config={**CONFIG, "partner_code": "unsupported-partner"})
+        TapFlowpayUniversalFile(config={**CONFIG, "partner_code": "unsupported-partner"})
 
 
 def test_history_prefix_without_trailing_slash_still_has_a_folder_boundary(store, capsys):
@@ -247,6 +247,6 @@ def test_empty_history_fails_before_emitting_new_records(store, capsys):
     history = HISTORY_PREFIX + "202611/job/transactions.jsonl"
     store.put(INBOUND, file_name(), jsonl(txn("new")))
     store.put(HISTORY, history, "")
-    with pytest.raises(InvalidHistory, match="no transactions"):
+    with pytest.raises(InvalidHistory, match="no records"):
         run_tap(store, capsys, input_blob=file_name(), history_blob=history)
     assert '"type": "RECORD"' not in capsys.readouterr().out

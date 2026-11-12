@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from tap_gokasa.storage import BlobInfo
+from tap_flowpay_universal_file.storage import BlobInfo
 
 # A made-up line in the shape of GoKasa's export.
 SAMPLE_LINE = (
@@ -51,6 +51,30 @@ def txn(
 def jsonl(*records: dict) -> str:
     """Records as a JSONL file, compact like GoKasa's export."""
     return "".join(json.dumps(r, separators=(",", ":")) + "\n" for r in records)
+
+
+# A made-up partner that exports CSV with its own columns, configured only through settings.
+CSV_PARTNER = {
+    "partner_code": "ExamplePOS",
+    "file_format": "csv",
+    "key_properties": ["receiptId", "line"],
+    "sort_properties": ["soldAt"],
+    "csv_delimiter": ";",
+    "csv_decimal_separator": ",",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "receiptId": {"type": "string"},
+            "line": {"type": "integer"},
+            "soldAt": {"type": "string", "format": "date-time"},
+            "amount": {"type": "number"},
+            "refund": {"type": ["boolean", "null"]},
+            "note": {"type": ["string", "null"]},
+        },
+        "required": ["soldAt", "amount"],
+    },
+}
+CSV_HEADER = "receiptId;line;soldAt;amount;refund;note;cashier\n"
 
 
 class FakeBlobStore:

@@ -7,7 +7,7 @@ import typing as t
 from singer_sdk import Stream
 
 if t.TYPE_CHECKING:
-    from tap_gokasa.tap import TapGoKasa
+    from tap_flowpay_universal_file.tap import TapFlowpayUniversalFile
 
 
 class NoWaitingFile(RuntimeError):
@@ -15,16 +15,16 @@ class NoWaitingFile(RuntimeError):
 
 
 class FileHistoryStream(Stream):
-    """The merchant's complete history in the selected adapter's format.
+    """The merchant's complete history in the format of the configured file contract.
 
     Every run emits the full history: the previous history file merged with every
     selected delivery. Downstream needs one complete file.
     """
 
-    def __init__(self, tap: TapGoKasa) -> None:
+    def __init__(self, tap: TapFlowpayUniversalFile) -> None:
         """Init the stream."""
-        super().__init__(tap, schema=tap.adapter.schema, name=tap.adapter.stream_name)
-        self.primary_keys = list(tap.adapter.primary_keys)
+        super().__init__(tap, schema=tap.contract.schema, name=tap.contract.stream_name)
+        self.primary_keys = list(tap.contract.key_properties)
         self.tap = tap
 
     def get_records(self, context: dict | None) -> t.Iterable[dict]:  # noqa: ARG002
@@ -34,16 +34,19 @@ class FileHistoryStream(Stream):
         file fails the job without emitting a partial history.
         """
         store = self.tap.store
-        adapter = self.tap.adapter
+        contract = self.tap.contract
         waiting = self.tap.input_files()
         if not waiting:
             msg = f"No file waits under {self.tap.inbound_prefix} in {self.tap.inbound_container}"
             raise NoWaitingFile(msg)
         deliveries = []
         for name in waiting:
-            records = adapter.parse_delivery(store.read(self.tap.inbound_container, name), name)
-            self.logger.info("%s: %d records.", name, len(records))
-            deliveries.append(records)
+            delivery = contract.read_delivery(store.read(self.tap.inbound_container, name), name)
+            self.logger.info("%s: %d records.", name, len(delivery.records))
+            if delivery.ignored:
+                fields = ", ".join(f"{path} ({count} records)" for path, count in delivery.ignored.items())
+                self.logger.warning("%s: ignored fields that are not configured: %s", name, fields)
+            deliveries.append(delivery.records)
 
         history_container = self.config["history_container"]
         previous = self.tap.previous_history()
@@ -51,10 +54,10 @@ class FileHistoryStream(Stream):
             self.logger.info("No previous history selected; this is the initial file.")
             history: list[dict] = []
         else:
-            history = adapter.parse_history(store.read(history_container, previous), previous)
+            history = contract.read_history(store.read(history_container, previous), previous)
             self.logger.info("Previous history %s: %d records.", previous, len(history))
 
-        records, changed = adapter.merge(history, *deliveries)
+        records, changed = contract.merge(history, *deliveries)
         if changed:
             self.logger.warning(
                 "%d records changed since an earlier file; kept the delivery's version. First ids: %s",

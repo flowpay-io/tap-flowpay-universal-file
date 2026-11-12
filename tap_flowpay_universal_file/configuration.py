@@ -6,7 +6,7 @@ import os
 import typing as t
 from urllib.parse import urlsplit
 
-from tap_gokasa.adapters import get_adapter
+from tap_flowpay_universal_file.contract import contract_from_config
 
 JOB_VARIABLES = {"{tenant}": "TENANT", "{tap}": "TAP"}
 
@@ -74,14 +74,14 @@ def validate_settings(config: t.Mapping) -> None:
     if config["archive_processed"]:
         raise ValueError("archive_processed=true is no longer supported; the tap leaves source files in place")
 
-    adapter = get_adapter(config["partner_code"])
+    contract = contract_from_config(config)
     if config["require_input_blob"] and "input_blob" not in config:
         raise ValueError("input_blob is required; prefix scanning is disabled by require_input_blob")
     if "history_blob" in config and "input_blob" not in config:
         raise ValueError("input_blob is required when history_blob is supplied; omit both for legacy scanning")
     if "input_blob" in config:
         validate_blob_name(config["input_blob"], "input_blob")
-        adapter.validate_input_name(config["input_blob"], config["merchant_id"])
+        contract.validate_input_name(config["input_blob"], config["merchant_id"])
         if "history_blob" not in config:
             raise ValueError("Exact-file jobs require history_blob: a previous successful output, or null for the first run")
     prefix = history_prefix(config)
@@ -90,5 +90,5 @@ def validate_settings(config: t.Mapping) -> None:
         validate_blob_name(previous, "history_blob")
         if not previous.startswith(prefix):
             raise ValueError("history_blob must be inside this connection's history_prefix")
-        if previous.rsplit("/", 1)[-1] not in adapter.history_files:
-            raise ValueError("history_blob must name a supported history file for partner_code")
+        if previous.rsplit("/", 1)[-1] not in contract.history_files:
+            raise ValueError(f"history_blob must name {' or '.join(contract.history_files)}")
