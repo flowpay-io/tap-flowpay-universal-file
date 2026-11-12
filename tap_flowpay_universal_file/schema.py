@@ -9,10 +9,11 @@ from __future__ import annotations
 import copy
 import datetime
 import json
+import math
 import re
 import typing as t
 
-from jsonschema import Draft7Validator, FormatChecker
+from jsonschema import Draft7Validator, FormatChecker, validators
 from jsonschema.exceptions import SchemaError
 from singer_sdk import typing as th
 
@@ -66,6 +67,18 @@ FORMATS = FormatChecker()
 FORMATS.checks("date-time")(is_date_time)
 
 
+def _finite_number(_checker: t.Any, value: t.Any) -> bool:
+    """JSON numbers must be finite; checking huge integers must not coerce them to float."""
+    return Draft7Validator.TYPE_CHECKER.is_type(value, "number") and (
+        not isinstance(value, float) or math.isfinite(value)
+    )
+
+
+RecordValidator = validators.extend(
+    Draft7Validator, type_checker=Draft7Validator.TYPE_CHECKER.redefine("number", _finite_number),
+)
+
+
 def types(node: t.Mapping) -> set[str]:
     """The non-null JSON types a schema node allows."""
     declared = node.get("type", [])
@@ -94,7 +107,10 @@ def load_schema(value: t.Any) -> dict:
     except SchemaError as exc:
         msg = f"schema is not a valid JSON Schema: {exc.message}"
         raise ValueError(msg) from None
-    if types(value) != {"object"} or not isinstance(value.get("properties"), dict) or not value["properties"]:
+    if (
+        value.get("type") not in ("object", ["object"])
+        or not isinstance(value.get("properties"), dict) or not value["properties"]
+    ):
         msg = "schema must be an object schema with at least one property"
         raise ValueError(msg)
     _check_properties(value["properties"], "")
@@ -116,7 +132,9 @@ def _check_node(node: t.Any, path: str) -> None:
         raise ValueError(msg)
     if found == {"object"} and isinstance(node.get("properties"), dict):
         _check_properties(node["properties"], f"{path}.")
-    if found == {"array"} and isinstance(node.get("items"), dict):
+    if found == {"array"}:
+        if not isinstance(node.get("items"), dict):
+            raise ValueError(f"schema field {path} must declare a single items schema")
         _check_node(node["items"], f"{path}[]")
 
 
@@ -127,8 +145,8 @@ def strip_unknown(record: t.Any, schema: t.Mapping) -> tuple[t.Any, set[str]]:
 
 
 def _strip(value: t.Any, node: t.Mapping, path: str, unknown: set[str]) -> t.Any:
-    properties = node.get("properties")
-    if isinstance(value, dict) and isinstance(properties, dict):
+    properties = node.get("properties", {})
+    if isinstance(value, dict) and kind(node) == "object":
         kept = {}
         for name, item in value.items():
             child = f"{path}.{name}" if path else name
@@ -168,8 +186,8 @@ class RecordChecker:
         for key in keys:
             node = contract["properties"][key]
             if "string" in types(node):
-                node.setdefault("minLength", 1)
-        self._validator = Draft7Validator(contract, format_checker=FORMATS)
+                node["minLength"] = max(1, node.get("minLength", 0))
+        self._validator = RecordValidator(contract, format_checker=FORMATS)
 
     def problems(self, record: t.Any) -> list[str]:
         """What breaks the contract in one record, as 'path: message'. Empty when it fits."""

@@ -181,4 +181,7 @@ def _field_list(value: t.Any, setting: str, schema: t.Mapping) -> tuple[str, ...
         if name not in properties or not types(properties[name]) <= SCALAR_TYPES:
             msg = f"{setting} must name top-level single-value fields of the schema; {name!r} is not one"
             raise ValueError(msg)
+        declared = properties[name]["type"]
+        if setting == "key_properties" and isinstance(declared, list) and "null" in declared:
+            raise ValueError(f"key_properties must name non-null fields; {name!r} allows null")
     return tuple(value)

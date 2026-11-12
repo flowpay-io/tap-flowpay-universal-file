@@ -54,7 +54,10 @@ storage is used, with messages that contain no secrets.
 **Schema.** The schema is an `object` with `properties`. Each field has exactly one type, with
 `null` optionally allowed in addition: `string` (optionally `format: date` or
 `format: date-time`), `integer`, `number`, `boolean`, and for JSONL also `array` and `object`.
-Key and sort fields must be top-level single values.
+Key and sort fields must be top-level single values. The root must be an object, never null.
+Keys must be non-null; text keys must be non-empty even if the field declares `minLength: 0`.
+Arrays must declare one `items` schema. An object without `properties` has no declared fields,
+so all of its child fields are ignored and counted. Numeric values must be finite.
 
 **Fields that are not configured** are removed before checking, at any depth, and listed in the
 log with how many records had each. Add a field to the schema when it is needed; from then on it is
@@ -71,7 +74,7 @@ an optional BOM and CRLF line ends are accepted.
 configured type: an empty cell is a missing field, `integer` accepts whole numbers only, `number`
 uses `csv_decimal_separator` (with a decimal comma, a dot is rejected rather than guessed to be a
 thousands separator), `boolean` accepts `true`/`false` and `1`/`0` in any case. Duplicate column
-names and rows with more cells than the header fail.
+names, malformed quoting and rows with more cells than the header fail.
 
 **Dates and timestamps.** `date` is `YYYY-MM-DD`. `date-time` is ISO 8601 with `T` or a space
 between date and time, with or without seconds, fractions and a UTC offset (`Z` or `+02:00`).
@@ -295,7 +298,9 @@ without overwriting earlier jobs. JSONL is preferred; CSV history (comma-separat
 readable. The pipeline may change how values look, so readback restores them by the configured
 types: nested values written as JSON text, optional nulls, numbers and booleans written as text,
 whole numbers written as floats, numeric IDs, dates at midnight and pipeline-added columns.
-Anything else that does not fit fails the run.
+Integer history values are restored exactly, including large IDs written as integer, decimal
+or exponent text; fractional values are rejected rather than rounded. Anything else that does
+not fit fails the run.
 
 History is checked for types and keys, but not for fields that became required after it was
 written, so making a field required does not break the next job.

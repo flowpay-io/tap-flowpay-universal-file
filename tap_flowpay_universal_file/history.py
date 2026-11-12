@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import typing as t
+from decimal import Decimal, InvalidOperation
 
 from tap_flowpay_universal_file.records import csv_rows, lines, report
 from tap_flowpay_universal_file.schema import RecordChecker, kind
@@ -82,8 +83,8 @@ def _restore(value: t.Any, node: t.Mapping) -> t.Any:  # noqa: PLR0911
     json_type = kind(node)
     if json_type in ("array", "object") and isinstance(value, str):
         value = json.loads(value)
-    if json_type == "object" and isinstance(value, dict) and isinstance(node.get("properties"), dict):
-        properties = node["properties"]
+    if json_type == "object" and isinstance(value, dict):
+        properties = node.get("properties", {})
         return {name: _restore(item, properties[name]) for name, item in value.items() if name in properties}
     if json_type == "array" and isinstance(value, list) and isinstance(node.get("items"), dict):
         return [_restore(item, node["items"]) for item in value]
@@ -114,9 +115,13 @@ def _whole_number(value: t.Any) -> t.Any:
     """12345.0 or "12345" -> 12345. Anything else is left for the schema check."""
     if isinstance(value, str):
         try:
-            value = float(value)
-        except ValueError:
+            number = Decimal(value)
+        except InvalidOperation:
             return value
+        # A float would round large IDs and could round a fractional value to an integer.
+        if number.is_finite() and number == number.to_integral_value():
+            return int(number)
+        return value
     if isinstance(value, float) and value.is_integer():
         return int(value)
     return value

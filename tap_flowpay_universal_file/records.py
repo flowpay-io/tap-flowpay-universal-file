@@ -39,16 +39,20 @@ def csv_rows(
     content: bytes, source: str, delimiter: str, error: type[ValueError],
 ) -> t.Iterator[tuple[int, dict[str, str | None]]]:
     """Rows of a CSV file with a header, as dicts with their line numbers."""
-    reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig"), newline=""), delimiter=delimiter)
-    header = reader.fieldnames or []
-    if len(set(header)) != len(header):
-        msg = f"{source}: duplicate column names in the header"
-        raise error(msg)
-    for row in reader:
-        if None in row:
-            msg = f"{source} line {reader.line_num}: more columns than the header"
+    reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig"), newline=""), delimiter=delimiter, strict=True)
+    try:
+        header = reader.fieldnames or []
+        if len(set(header)) != len(header):
+            msg = f"{source}: duplicate column names in the header"
             raise error(msg)
-        yield reader.line_num, row
+        for row in reader:
+            if None in row:
+                msg = f"{source} line {reader.line_num}: more columns than the header"
+                raise error(msg)
+            yield reader.line_num, row
+    except csv.Error as exc:
+        msg = f"{source} line {reader.reader.line_num}: not valid CSV ({exc})"
+        raise error(msg) from exc
 
 
 def report(source: str, errors: list[str]) -> str:
