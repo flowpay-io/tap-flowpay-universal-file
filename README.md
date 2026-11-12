@@ -279,6 +279,21 @@ successful output, such as `history/connection-1/gokasa/202611/job-1/transaction
 Pass these references as job-specific settings; keep the file contract and secrets in persistent
 configuration. Do not leave `history_blob: null` on subsequent jobs.
 
+### Job parameters as environment variables
+
+An orchestrator may instead set the per-job parameters as environment variables of the job.
+They win over saved settings and are checked exactly like them.
+
+| Variable | Setting |
+|---|---|
+| `MERCHANT_ID` | `merchant_id` |
+| `BLOB_PATH` | `input_blob` |
+| `HISTORY_BLOB` | `history_blob`; empty or `null` for the first file |
+
+`BLOB_PATH` and `HISTORY_BLOB` must be set together, so a per-job file is never merged into a
+history saved for an earlier run. With `require_input_blob: true`, a job without `BLOB_PATH` or
+`input_blob` fails instead of scanning.
+
 ### Existing manual configurations
 
 Omitting both `input_blob` and `history_blob` keeps the original prefix-scan mode. The tap lists

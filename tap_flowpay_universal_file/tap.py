@@ -8,7 +8,12 @@ from singer_sdk import Tap
 from singer_sdk import typing as th  # JSON schema typing helpers
 
 from tap_flowpay_universal_file import streams
-from tap_flowpay_universal_file.configuration import history_prefix, validate_blob_name, validate_settings
+from tap_flowpay_universal_file.configuration import (
+    apply_job_environment,
+    history_prefix,
+    validate_blob_name,
+    validate_settings,
+)
 from tap_flowpay_universal_file.contract import FileContract, contract_from_config
 from tap_flowpay_universal_file.history import latest_history
 from tap_flowpay_universal_file.storage import AzureBlobStore, BlobInfo, BlobStore
@@ -163,7 +168,13 @@ class TapFlowpayUniversalFile(Tap):
     def _validate_config(
         self, *, raise_errors: bool = True, warnings_as_errors: bool = False,
     ) -> tuple[list[str], list[str]]:
-        """Validate conditional credentials and references before storage is used."""
+        """Apply the job's environment, then validate credentials and references before storage is used."""
+        try:
+            self._config = apply_job_environment(self._config)
+        except ValueError as exc:
+            if raise_errors:
+                raise
+            return [], [str(exc)]
         warnings, errors = super()._validate_config(
             raise_errors=raise_errors, warnings_as_errors=warnings_as_errors,
         )
