@@ -1,5 +1,7 @@
 """Exact-file jobs must be isolated, repeatable, and leave source blobs untouched."""
 
+from unittest.mock import Mock
+
 import pytest
 
 from tap_gokasa.history import InvalidHistory
@@ -104,6 +106,71 @@ def test_exact_job_requires_an_explicit_first_run_or_previous_output():
 def test_event_configuration_cannot_fall_back_to_scanning_when_file_override_is_missing():
     with pytest.raises(ValueError, match="input_blob"):
         TapGoKasa(config={**CONFIG, "require_input_blob": True, "history_blob": None})
+
+
+@pytest.mark.parametrize("history", [None, HISTORY_PREFIX + "202611/success/transactions.jsonl"])
+def test_history_override_without_input_fails_before_storage(history, store, capsys, monkeypatch):
+    listing = Mock(side_effect=AssertionError("Invalid jobs must not list storage"))
+    reading = Mock(side_effect=AssertionError("Invalid jobs must not read storage"))
+    monkeypatch.setattr(store, "list_blobs", listing)
+    monkeypatch.setattr(store, "read", reading)
+
+    with pytest.raises(ValueError, match="input_blob"):
+        run_tap(store, capsys, require_input_blob=False, history_blob=history)
+
+    listing.assert_not_called()
+    reading.assert_not_called()
+    assert '"type": "RECORD"' not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("prefix", [
+    "history/../other/",
+    "history/{unsupported}/",
+    "/history/tenant1/gokasa/",
+    "history//tenant1/",
+    "https://example.blob.core.windows.net/history?sig=do-not-print",
+])
+def test_initial_job_rejects_invalid_history_prefix_before_storage(prefix, store, capsys, monkeypatch):
+    reading = Mock(side_effect=AssertionError("Invalid jobs must not read storage"))
+    monkeypatch.setattr(store, "read", reading)
+    monkeypatch.setattr(store, "list_blobs", no_listing)
+    store.put(INBOUND, file_name(), jsonl(txn("new")))
+
+    with pytest.raises(ValueError, match="history_prefix") as error:
+        run_tap(store, capsys, input_blob=file_name(), history_blob=None, history_prefix=prefix)
+
+    reading.assert_not_called()
+    assert "do-not-print" not in str(error.value)
+    assert '"type": "RECORD"' not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("variable", ["TENANT", "TAP"])
+def test_initial_job_requires_history_prefix_environment(variable, store, capsys, monkeypatch):
+    monkeypatch.setenv("TENANT", "tenant1")
+    monkeypatch.setenv("TAP", "gokasa")
+    monkeypatch.delenv(variable)
+    reading = Mock(side_effect=AssertionError("Invalid jobs must not read storage"))
+    monkeypatch.setattr(store, "read", reading)
+    monkeypatch.setattr(store, "list_blobs", no_listing)
+
+    with pytest.raises(ValueError, match=variable + " is not set"):
+        run_tap(store, capsys, input_blob=file_name(), history_blob=None,
+                history_prefix="history/{tenant}/{tap}/")
+
+    reading.assert_not_called()
+    assert '"type": "RECORD"' not in capsys.readouterr().out
+
+
+def test_initial_job_accepts_resolved_history_prefix(store, capsys, monkeypatch):
+    monkeypatch.setenv("TENANT", "tenant1")
+    monkeypatch.setenv("TAP", "gokasa")
+    monkeypatch.setattr(store, "list_blobs", no_listing)
+    store.put(INBOUND, file_name(), jsonl(txn("new")))
+
+    _, emitted = run_tap(store, capsys, input_blob=file_name(), history_blob=None,
+                         history_prefix="history/{tenant}/{tap}/")
+
+    assert emitted == [txn("new")]
 
 
 def test_empty_input_reference_cannot_fall_back_to_scanning():

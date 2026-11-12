@@ -54,6 +54,8 @@ Replaying an older delivery can overwrite newer corrections because deliveries h
 `history_prefix` supports `{tenant}` and `{tap}`, resolved from the job's `TENANT` and `TAP`
 environment variables. These values must be single path components. An explicit `history_blob`
 must be inside that folder and end with `transactions.jsonl` or `transactions.csv`.
+The prefix is validated even for the initial run with `history_blob: null`. Supplying
+`history_blob` without `input_blob` fails; omit both to use legacy scanning.
 
 GoKasa filenames use `transactions_<merchant_id>_<delivery_id>.jsonl`. The last underscore
 separates the merchant from a nonempty delivery ID, which cannot contain underscores or dots.
