@@ -38,6 +38,12 @@ def test_bom_blank_lines_crlf_and_no_final_newline_are_fine():
     assert [r["transactionId"] for r in parse_delivery(content.encode(), "f.jsonl")] == ["t1", "t2"]
 
 
+@pytest.mark.parametrize("content", [b"", b"\xef\xbb\xbf\n\r\n  "])
+def test_empty_delivery_cannot_succeed_without_producing_history(content):
+    with pytest.raises(InvalidDelivery, match="no transactions"):
+        parse_delivery(content, "empty.jsonl")
+
+
 @pytest.mark.parametrize(
     ("change", "error"),
     [

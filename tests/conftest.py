@@ -79,13 +79,6 @@ class FakeBlobStore:
     def read(self, container: str, name: str) -> bytes:
         return self.blobs[(container, name)][0]
 
-    def write(self, container: str, name: str, data: bytes) -> None:
-        self.put(container, name, data)
-
-    def delete(self, container: str, name: str) -> None:
-        del self.blobs[(container, name)]
-
-
 @pytest.fixture
 def store() -> FakeBlobStore:
     return FakeBlobStore()

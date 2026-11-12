@@ -1,10 +1,11 @@
-"""Blob storage access. The tap only lists, reads, writes and deletes blobs."""
+"""Read-only blob storage access with SAS or service-principal authentication."""
 
 from __future__ import annotations
 
 import typing as t
 from dataclasses import dataclass
 
+from azure.identity import ClientSecretCredential
 from azure.storage.blob import ContainerClient
 
 if t.TYPE_CHECKING:
@@ -28,31 +29,41 @@ class BlobStore(t.Protocol):
     def read(self, container: str, name: str) -> bytes:
         """Download one blob."""
 
-    def write(self, container: str, name: str, data: bytes) -> None:
-        """Upload one blob, replacing it if it exists."""
-
-    def delete(self, container: str, name: str) -> None:
-        """Delete one blob."""
-
 
 class AzureBlobStore:
-    """BlobStore backed by Azure containers, each with its own SAS token.
+    """Configured container clients; no write or delete operations are exposed."""
 
-    A token per container keeps each one scoped to what the tap needs there.
-    """
-
-    def __init__(self, account_url: str, sas_tokens: dict[str, str]) -> None:
+    def __init__(self, account_url: str, credentials: dict[str, t.Any]) -> None:
         """Connect to the containers. No request is made until the first call."""
         self._containers = {
-            name: ContainerClient(account_url, name, credential=token)
-            for name, token in sas_tokens.items()
+            name: ContainerClient(account_url, name, credential=credential)
+            for name, credential in credentials.items()
         }
+
+    @classmethod
+    def from_config(cls, config: t.Mapping) -> AzureBlobStore:
+        """Create clients without authenticating until the first storage request."""
+        inbound = config["inbound_container"]
+        history = config["history_container"]
+        if config["auth_method"] == "service_principal":
+            credential = ClientSecretCredential(
+                tenant_id=config["azure_tenant_id"],
+                client_id=config["azure_client_id"],
+                client_secret=config["azure_client_secret"],
+            )
+            credentials = {inbound: credential, history: credential}
+        else:
+            credentials = {
+                inbound: config["inbound_sas_token"],
+                history: config["history_sas_token"],
+            }
+        return cls(config["account_url"], credentials)
 
     def _container(self, name: str) -> ContainerClient:
         try:
             return self._containers[name]
         except KeyError:
-            msg = f"No SAS token configured for container {name}"
+            msg = "No storage client configured for this container"
             raise ValueError(msg) from None
 
     def list_blobs(self, container: str, prefix: str) -> list[BlobInfo]:
@@ -65,11 +76,3 @@ class AzureBlobStore:
     def read(self, container: str, name: str) -> bytes:
         """Download one blob."""
         return self._container(container).download_blob(name).readall()
-
-    def write(self, container: str, name: str, data: bytes) -> None:
-        """Upload one blob, replacing it if it exists."""
-        self._container(container).upload_blob(name, data, overwrite=True)
-
-    def delete(self, container: str, name: str) -> None:
-        """Delete one blob."""
-        self._container(container).delete_blob(name)

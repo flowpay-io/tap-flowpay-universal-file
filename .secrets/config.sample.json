@@ -1,9 +1,15 @@
 {
-    "account_url": "https://<account>.blob.core.windows.net",
-    "merchant_id": "<merchant id>",
-    "inbound_container": "<inbound container>",
-    "inbound_sas_token": "",
-    "history_container": "<history container>",
-    "history_sas_token": "",
-    "history_prefix": "<folder>/{tenant}/{tap}/"
+    "partner_code": "GoKasa",
+    "auth_method": "service_principal",
+    "account_url": "https://example.blob.core.windows.net",
+    "azure_tenant_id": "<directory-id>",
+    "azure_client_id": "<application-id>",
+    "azure_client_secret": "<secret-from-protected-configuration>",
+    "merchant_id": "M001",
+    "require_input_blob": true,
+    "inbound_container": "partner-input",
+    "input_blob": "inbound/transactions_M001_delivery-1.jsonl",
+    "history_container": "partner-output",
+    "history_prefix": "history/connection-1/gokasa/",
+    "history_blob": null
 }
