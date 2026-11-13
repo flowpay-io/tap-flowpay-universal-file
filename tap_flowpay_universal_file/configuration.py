@@ -12,6 +12,22 @@ JOB_VARIABLES = {"{tenant}": "TENANT", "{tap}": "TAP"}
 # Per-job parameters an orchestrator may set as environment variables instead of settings.
 JOB_PARAMETERS = {"MERCHANT_ID": "merchant_id", "BLOB_PATH": "input_blob", "HISTORY_BLOB": "history_blob"}
 FIRST_FILE = ("", "null")  # HISTORY_BLOB values meaning: no previous history, this is the first file
+# The service principal is shared by every tenant, so it may be set once as environment variables.
+CREDENTIAL_VARIABLES = {
+    "azure_tenant_id": "AZURE_TENANT_ID",
+    "azure_client_id": "AZURE_CLIENT_ID",
+    "azure_client_secret": "AZURE_CLIENT_SECRET",
+}
+
+
+def apply_credential_environment(config: t.Mapping, environ: t.Mapping[str, str] = os.environ) -> dict:
+    """Settings with missing service-principal fields filled from the environment; settings win."""
+    applied = dict(config)
+    for setting, variable in CREDENTIAL_VARIABLES.items():
+        current = applied.get(setting)
+        if (not isinstance(current, str) or not current.strip()) and environ.get(variable, "").strip():
+            applied[setting] = environ[variable]
+    return applied
 
 
 def apply_job_environment(config: t.Mapping, environ: t.Mapping[str, str] = os.environ) -> dict:
@@ -72,7 +88,9 @@ def validate_settings(config: t.Mapping) -> None:
         raise ValueError("auth_method must be service_principal or sas")
     for field in fields:
         if not isinstance(config.get(field), str) or not config[field].strip():
-            raise ValueError(f"{field} is required for auth_method={method}")
+            variable = CREDENTIAL_VARIABLES.get(field)
+            alternative = f" (setting or {variable} environment variable)" if variable else ""
+            raise ValueError(f"{field}{alternative} is required for auth_method={method}")
 
     endpoint = urlsplit(config["account_url"])
     if (

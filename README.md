@@ -243,8 +243,11 @@ replace storage authorization.
 
 ### Service-principal authentication
 
-Set `auth_method` to `service_principal` and provide all three `azure_*` fields. One
-`ClientSecretCredential` is shared by the input and history clients. The Azure SDK obtains and
+Set `auth_method` to `service_principal` and provide all three `azure_*` fields. Because one
+service principal usually serves every tenant, any of them may instead be set once as the
+environment variables `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` and `AZURE_CLIENT_SECRET`; a value in
+the settings wins over the variable. One `ClientSecretCredential` is shared by the input and
+history clients. The Azure SDK obtains and
 refreshes access tokens; the application secret still needs rotation. SAS fields are ignored in
 this mode, and authentication failure does not fall back to SAS or a developer's login.
 

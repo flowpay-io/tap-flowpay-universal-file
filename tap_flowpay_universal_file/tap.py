@@ -9,6 +9,7 @@ from singer_sdk import typing as th  # JSON schema typing helpers
 
 from tap_flowpay_universal_file import streams
 from tap_flowpay_universal_file.configuration import (
+    apply_credential_environment,
     apply_job_environment,
     history_prefix,
     validate_blob_name,
@@ -170,7 +171,7 @@ class TapFlowpayUniversalFile(Tap):
     ) -> tuple[list[str], list[str]]:
         """Apply the job's environment, then validate credentials and references before storage is used."""
         try:
-            self._config = apply_job_environment(self._config)
+            self._config = apply_credential_environment(apply_job_environment(self._config))
         except ValueError as exc:
             if raise_errors:
                 raise
