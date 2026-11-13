@@ -9,6 +9,26 @@ from urllib.parse import urlsplit
 from tap_flowpay_universal_file.contract import contract_from_config
 
 JOB_VARIABLES = {"{tenant}": "TENANT", "{tap}": "TAP"}
+# Per-job parameters an orchestrator may set as environment variables instead of settings.
+JOB_PARAMETERS = {"MERCHANT_ID": "merchant_id", "BLOB_PATH": "input_blob", "HISTORY_BLOB": "history_blob"}
+FIRST_FILE = ("", "null")  # HISTORY_BLOB values meaning: no previous history, this is the first file
+
+
+def apply_job_environment(config: t.Mapping, environ: t.Mapping[str, str] = os.environ) -> dict:
+    """Settings with the job's environment variables applied; the variables win.
+
+    BLOB_PATH and HISTORY_BLOB must come together, so a per-job file is never merged
+    into a history saved for an earlier run. Values are checked like the settings.
+    """
+    if ("BLOB_PATH" in environ) != ("HISTORY_BLOB" in environ):
+        msg = "BLOB_PATH and HISTORY_BLOB must be set together; HISTORY_BLOB is empty or null for the first file"
+        raise ValueError(msg)
+    applied = dict(config)
+    for variable, setting in JOB_PARAMETERS.items():
+        if variable in environ:
+            value = environ[variable]
+            applied[setting] = None if setting == "history_blob" and value in FIRST_FILE else value
+    return applied
 
 
 def validate_blob_name(name: str, setting: str) -> None:
