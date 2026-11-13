@@ -106,3 +106,11 @@ class FakeBlobStore:
 @pytest.fixture
 def store() -> FakeBlobStore:
     return FakeBlobStore()
+
+
+@pytest.fixture(autouse=True)
+def no_job_or_credential_environment(monkeypatch):
+    """Tests must not depend on variables that happen to be set on the developer's machine."""
+    for variable in ("MERCHANT_ID", "BLOB_PATH", "HISTORY_BLOB",
+                     "AZURE_TENANT_ID", "AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET"):
+        monkeypatch.delenv(variable, raising=False)
